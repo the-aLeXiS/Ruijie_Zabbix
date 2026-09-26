@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Если UFW не запустился сам, принудительно включаем его перед накатом NAT
+if ! ufw status | grep -q "Status: active"; then
+    ufw --force enable
+fi
+
 # Включаем форвардинг в ядре
 sysctl -w net.ipv4.ip_forward=1
 

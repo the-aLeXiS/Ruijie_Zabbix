@@ -1,31 +1,28 @@
 #!/bin/bash
 
-# Если UFW не запустился сам, принудительно включаем его перед накатом NAT
-if ! ufw status | grep -q "Status: active"; then
-    ufw --force enable
-fi
+# 1. Принудительно включаем UFW, который отключил VPN-сервер
+ufw --force enable
 
-# Включаем форвардинг в ядре
+# 2. Включаем форвардинг в ядре
 sysctl -w net.ipv4.ip_forward=1
 
-# Находим и удаляем абсолютно любые правила MASQUERADE для подсетей VPN,
-# чтобы не подбирать ключи под синтаксис libreswan
+# 3. Полностью вычищаем старые кривые правила для ens192, которые накатил VPN при старте
 while iptables -t nat -D POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null; do true; done
 while iptables -t nat -D POSTROUTING -s 192.168.43.0/24 -j MASQUERADE 2>/dev/null; do true; done
+while iptables -t nat -D POSTROUTING -s 192.168.43.0/24 -o ens192 -m policy --dir out --pol none -j MASQUERADE 2>/dev/null; do true; done
 
-# Добавляем чистое и единственное правило маскарадинга через нужный ens224
+# 4. Добавляем наше правильное правило маскарадинга через ens224
 iptables -t nat -A POSTROUTING -s 192.168.43.0/24 -o ens224 -j MASQUERADE
 
-# Исправление размера MTU (оригинальное правило автора)
+# 5. Исправление размера MTU (правило автора)
 iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -s 192.168.43.0/24 -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -s 192.168.43.0/24 -j TCPMSS --clamp-mss-to-pmtu
 
-# Очищаем старые разрешающие правила FORWARD, чтобы не дублировать их при перезапусках
+# 6. Очищаем и вставляем разрешающие правила FORWARD в самый верх, чтобы UFW их не блокировал
 while iptables -D FORWARD -s 192.168.43.0/24 -j ACCEPT 2>/dev/null; do true; done
 while iptables -D FORWARD -d 192.168.43.0/24 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; do true; done
 
-# Вставляем правила строго на первые позиции цепочки FORWARD
 iptables -I FORWARD 1 -s 192.168.43.0/24 -j ACCEPT
 iptables -I FORWARD 2 -d 192.168.43.0/24 -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-echo "VPN NAT fixed successfully!"
+echo "UFW enabled and VPN NAT fixed successfully!"

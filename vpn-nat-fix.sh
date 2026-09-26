@@ -6,9 +6,10 @@ ufw --force enable
 # 2. Включаем форвардинг в ядре
 sysctl -w net.ipv4.ip_forward=1
 
-# 3. Полностью вычищаем старые кривые правила для ens192, которые накатил VPN при старте
+# 3. Полностью вычищаем любые старые правила маскарадинга для VPN подсетей
 while iptables -t nat -D POSTROUTING -s 192.168.42.0/24 -j MASQUERADE 2>/dev/null; do true; done
 while iptables -t nat -D POSTROUTING -s 192.168.43.0/24 -j MASQUERADE 2>/dev/null; do true; done
+while iptables -t nat -D POSTROUTING -s 192.168.43.0/24 -m policy --dir out --pol none -j MASQUERADE 2>/dev/null; do true; done
 while iptables -t nat -D POSTROUTING -s 192.168.43.0/24 -o ens192 -m policy --dir out --pol none -j MASQUERADE 2>/dev/null; do true; done
 
 # 4. Добавляем наше правильное правило маскарадинга через ens224
